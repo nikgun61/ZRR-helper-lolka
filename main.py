@@ -3,7 +3,7 @@ import logging
 import asyncio
 
 from dotenv import load_dotenv
-from utils.file_utils import load_channels
+from utils.file_utils import find_file_by_prefix_and_read, load_channels
 from utils.datetime_utils import get_zrr_current_weekday
 from client import LolkaClient
 from bot import vs
@@ -27,6 +27,9 @@ async def main():
 
     weekday = get_zrr_current_weekday()
     logger.info("Current ZRR weekday: %d", weekday)
+
+    yesterday_content = get_yesterday_content(weekday)
+    today_content = get_today_content(weekday)
 
     client = LolkaClient(token=TOKEN)
 
@@ -56,3 +59,29 @@ if __name__ == "__main__":
     except Exception:
         logger.exception("Application crashed")
         raise
+
+def get_today_content(weekday: int):
+    logger.info(f"Loading today's content: weekday={weekday}")
+    content = find_file_by_prefix_and_read(
+        directory="vs",
+        prefix=str(weekday)
+    )
+    logger.info(f"Today's content loaded: directory=%s weekday={weekday} length={len(content)}")
+
+    return content
+
+
+def get_yesterday_content(weekday: int):
+    if weekday == 0:
+        yesterday_weekday = "6"
+    else:
+        yesterday_weekday = str(weekday - 1)
+
+    logger.info(f"Loading yesterday's content: weekday={yesterday_weekday}")
+    content = find_file_by_prefix_and_read(
+        directory="vs",
+        prefix=yesterday_weekday
+    )
+    logger.info(f"Yesterday's content loaded: weekday={weekday} length={len(content)}")
+
+    return content

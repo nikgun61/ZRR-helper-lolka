@@ -12,21 +12,12 @@ async def vs(
         weekday: int
 ):
     logger.info("VS processing started: channel_id=%s weekday=%d", channel_id, weekday)
-
-    yesterday_content = _get_yesterday_content(
-        weekday=weekday,
-        directory='vs',
-    )
     await _delete_yesterday_content(
         client=client,
         channel_id=channel_id,
         yesterday_content=yesterday_content
     )
 
-    today_content = _get_today_content(
-        weekday=weekday,
-        directory='vs',
-    )
     await _publish_content(
         client=client,
         channel_id=channel_id,
@@ -79,28 +70,3 @@ async def _publish_content(
     logger.info("Today's message published: channel_id=%s message_id=%s", channel_id, message.id)
 
 
-def _get_today_content(weekday: int, directory: str):
-    logger.info("Loading today's content: directory=%s weekday=%d", directory, weekday)
-    content = find_file_by_prefix_and_read(
-        directory=directory,
-        prefix=str(weekday)
-    )
-    logger.info("Today's content loaded: directory=%s weekday=%d length=%d", directory, weekday, len(content))
-
-    return content
-
-
-def _get_yesterday_content(weekday: int, directory: str):
-    if weekday == 0:
-        yesterday_weekday = "6"
-    else:
-        yesterday_weekday = str(weekday - 1)
-
-    logger.info("Loading yesterday's content: directory=%s weekday=%s", directory, yesterday_weekday)
-    content = find_file_by_prefix_and_read(
-        directory=directory,
-        prefix=yesterday_weekday
-    )
-    logger.info("Yesterday's content loaded: directory=%s weekday=%s length=%d", directory, yesterday_weekday, len(content))
-
-    return content
