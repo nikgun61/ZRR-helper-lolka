@@ -1,87 +1,67 @@
-import os
-import logging
 import asyncio
+import logging
+import sys
 
-from dotenv import load_dotenv
-from utils.file_utils import find_file_by_prefix_and_read, load_channels
-from utils.datetime_utils import get_zrr_current_weekday
+from bot import load_vs_content, process_vs_channel
 from client import LolkaClient
-from bot import vs
+from config import CHANNELS_FILE, LOG_DIR, load_settings
+from utils.datetime_utils import get_zrr_current_weekday
+from utils.file_utils import load_channels
 from utils.logging_utils import setup_logging
-
-setup_logging()
 
 logger = logging.getLogger(__name__)
 
-load_dotenv()
+SUPPORTED_TYPES = {"vs"}
 
-TOKEN = os.environ["TOKEN"]
 
-async def main():
-    logger.info("====================")
-    logger.info("Application started")
+async def run() -> int:
+    """Обрабатывает все каналы. Возвращает число каналов, завершившихся ошибкой."""
+    settings = load_settings()
 
-    logger.info("Loading channels")
-    channels = load_channels()
+    channels = load_channels(CHANNELS_FILE)
     logger.info("Loaded %d channels", len(channels))
+
+    unknown = sorted({c.type for c in channels} - SUPPORTED_TYPES)
+    if unknown:
+        raise ValueError(f"Неизвестные типы каналов в {CHANNELS_FILE.name}: {', '.join(unknown)}")
 
     weekday = get_zrr_current_weekday()
     logger.info("Current ZRR weekday: %d", weekday)
 
-    yesterday_content = get_yesterday_content(weekday)
-    today_content = get_today_content(weekday)
+    # Контент грузим до подключения: если файла нет, падаем сразу,
+    # не открывая соединение.
+    vs_content = load_vs_content(weekday) if any(c.type == "vs" for c in channels) else None
 
-    client = LolkaClient(token=TOKEN)
-
-    logger.info("Connecting client")
+    failed = 0
+    client = LolkaClient(token=settings.token)
     async with client.connected():
-        logger.info("Client connected")
-
         for channel in channels:
-            channel_id = channel["id"]
-            channel_type = channel["type"]
-            logger.info("Processing channel: id=%s type=%s", channel_id, channel_type)
+            logger.info("Processing channel: id=%s type=%s comment=%r", channel.id, channel.type, channel.comment)
+            try:
+                if channel.type == "vs":
+                    await process_vs_channel(client, channel.id, vs_content)
+            except Exception:
+                failed += 1
+                logger.exception("Channel processing failed: id=%s", channel.id)
+    return failed
 
-            if channel_type == "vs":
-                await vs(
-                    client=client,
-                    channel_id=channel_id,
-                    weekday=weekday,
-                )
 
-            logger.info("Finished processing channel: id=%s", channel_id)
-
-    logger.info("Application finished")
-
-if __name__ == "__main__":
+def main() -> int:
+    setup_logging(LOG_DIR)
+    logger.info("====================")
+    logger.info("Application started")
     try:
-        asyncio.run(main())
+        failed = asyncio.run(run())
     except Exception:
         logger.exception("Application crashed")
-        raise
+        return 1
 
-def get_today_content(weekday: int):
-    logger.info(f"Loading today's content: weekday={weekday}")
-    content = find_file_by_prefix_and_read(
-        directory="vs",
-        prefix=str(weekday)
-    )
-    logger.info(f"Today's content loaded: directory=%s weekday={weekday} length={len(content)}")
-
-    return content
+    if failed:
+        logger.error("Application finished with errors: failed_channels=%d", failed)
+        return 1
+    logger.info("Application finished")
+    return 0
 
 
-def get_yesterday_content(weekday: int):
-    if weekday == 0:
-        yesterday_weekday = "6"
-    else:
-        yesterday_weekday = str(weekday - 1)
-
-    logger.info(f"Loading yesterday's content: weekday={yesterday_weekday}")
-    content = find_file_by_prefix_and_read(
-        directory="vs",
-        prefix=yesterday_weekday
-    )
-    logger.info(f"Yesterday's content loaded: weekday={weekday} length={len(content)}")
-
-    return content
+if __name__ == "__main__":
+    sys.exit(main())
